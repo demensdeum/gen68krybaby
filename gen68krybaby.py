@@ -18,18 +18,18 @@ class ChunkReader:
         content = rom.read()
         rom.close()
         self.hexString = str(binascii.hexlify(content))[2:-1]
-        self.pointer = -1
+        self.cursor = -1
         
     def nextChunk(self):
-        self.pointer += 1
-        address = self.pointer
-        if self.pointer >= len(self.hexString):
+        self.cursor += 1
+        address = self.cursor / 2
+        if self.cursor >= len(self.hexString):
             return None
-        lhs = self.hexString[self.pointer]
+        lhs = self.hexString[self.cursor]
         rhs = ""
-        self.pointer += 1
-        if self.pointer < len(self.hexString):
-            rhs = self.hexString[self.pointer]
+        self.cursor += 1
+        if self.cursor < len(self.hexString):
+            rhs = self.hexString[self.cursor]
         data = f"{lhs}{rhs}"
         return Chunk(data, address)
 
@@ -50,7 +50,7 @@ class Disassembler:
         Commands = 2            
     
     def __init__(self, dataSource):
-        self.EntryPoint = int(0x200)
+        self.EntryPoint = 512
         
         self.segmentStartAddress = None
         self.lhsChunk = None
