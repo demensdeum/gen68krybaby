@@ -1,40 +1,121 @@
 import os
 import sys
 import binascii
+from enum import Enum
 
-if len(sys.argv) < 3:
-    print("Usage python3 gen68krybaby.py genesisRom.bin output.disasm")
+if len(sys.argv) < 2:
+    print("Usage python3 gen68krybaby.py genesisRom.bin")
     exit(1)
 
-def convertLine(line):
-    output = line.replace("4E B9", "_JUMP")
-    output = output.replace("4E 71", "_NOP_")
-    return output
+class Chunk:
+    def __init__(self, data, address):
+        self.data = data
+        self.address = address
 
-filepath = sys.argv[1]
-rom = open(filepath, 'rb')
-content = rom.read()
-rom.close()
-hexString = str(binascii.hexlify(content))[2:-1]
-disasmFilePath = sys.argv[2]
-disasm = open(disasmFilePath, 'w')
-outputLine = "\n\t\t\t\t\t\t ROM HEADER:\n\n"
-outputLine += "0x00000000 | "
-for index, char in enumerate(hexString):
-    outputLine += str(char).upper()
-    if index % 2 == 1:
-        outputLine += " "
-    if index % 32 == 31 and index != len(hexString)-1:
-        outputLine += "\n"
-        value = int(index / 2) + 1
-        if value == 512:
-            outputLine += "\n\t\t\t\t\t\t RESET:\n\n"
-        padding = 10
-        outputLine += f"{value:#0{padding}x}".upper()
-        outputLine += str(" | ")
-        disasm.write(convertLine(outputLine))
-        outputLine = ""
+class ChunkReader:
+    def __init__(self, filepath):
+        rom = open(filepath, 'rb')
+        content = rom.read()
+        rom.close()
+        self.hexString = str(binascii.hexlify(content))[2:-1]
+        self.pointer = -1
         
+    def nextChunk(self):
+        self.pointer += 1
+        address = self.pointer
+        if self.pointer >= len(self.hexString):
+            return None
+        lhs = self.hexString[self.pointer]
+        rhs = ""
+        self.pointer += 1
+        if self.pointer < len(self.hexString):
+            rhs = self.hexString[self.pointer]
+        data = f"{lhs}{rhs}"
+        return Chunk(data, address)
+
+class DisassemblerToChunkReaderAdapter:
+    def __init__(self, chunkReader):
+        self.chunkReader = chunkReader
+
+    def fetchMemoryAddress(self):
+        output = "0x"
+        for i in range(4):
+            output += self.chunkReader.nextChunk().data
+        return output
+            
+class Disassembler:
+    
+    class State(Enum):
+        Data = 1
+        Commands = 2            
+    
+    def __init__(self, dataSource):
+        self.EntryPoint = int(0x200)
+        
+        self.segmentStartAddress = None
+        self.lhsChunk = None
+        self.rhsChunk = None
+        self.state = self.State.Data
+        self.dataSource = dataSource
+        
+    def disasmCommandChunks(self):
+        output = f"{self.lhsChunk.data}{self.rhsChunk.data}".upper()
+        
+        self.lhsChunk = None
+        self.rhsChunk = None        
+        
+        output = output.replace("4EB9", "JSR")
+        output = output.replace("4E71", "NOP")
+        output = output.replace("4E75","RTS")
+        
+        if output == "JSR":
+            memoryAddress = self.dataSource.fetchMemoryAddress()
+            output = f"JSR {memoryAddress}\n"
+            return output
+        
+        elif output == "NOP":
+            output = "NOP\n"
+            return output
+        
+        return f"{output}\n"
+        
+    def disasm(self, chunk):
+        if self.segmentStartAddress == None:
+            self.segmentStartAddress = chunk.address
+            return f"ROM HEADER:\n"
+        
+        elif chunk.address == self.EntryPoint:
+            self.segmentStartAddress = chunk.address
+            self.state = self.State.Commands
+            self.lhsChunk = chunk
+            return f"\nRESET:\n"
+        
+        if self.state == self.State.Commands:
+            if self.lhsChunk == None:
+                self.lhsChunk = chunk
+                return ""
+            
+            elif self.rhsChunk == None:
+                self.rhsChunk = chunk
+                return self.disasmCommandChunks()
+        else:
+            return ""
+
+filePath = sys.argv[1]
+disasmFilePath = f"{filePath}.disasm"
+disasm = open(disasmFilePath, 'w')
+chunkReader = ChunkReader(filePath)
+disassemblerToChunkReaderAdapter = DisassemblerToChunkReaderAdapter(chunkReader)
+disassembler = Disassembler(disassemblerToChunkReaderAdapter)
+
+while True:
+    chunk = chunkReader.nextChunk()
+    if chunk != None:
+        disassembledChunk = disassembler.disasm(chunk)
+        disasm.write(disassembledChunk)
+    else:
+        break
+    
 disasm.close()
 
 exit(0)
