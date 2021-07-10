@@ -1,3 +1,5 @@
 # Gen68KryBaby
 
-Gen68KryBaby - Sega Genesis assembler, disassembler
+[logo]: gen68KryBabyLogo.png "Gen68KryBaby"
+
+Gen68KryBaby - Sega Genesis Motorola 68k roms assembler, disassembler
