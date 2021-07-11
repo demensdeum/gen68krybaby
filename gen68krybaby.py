@@ -197,8 +197,6 @@ class Assembler:
         self.toHex(address[4:8])        
         
     def moveaToHex(self, address, register):
-        print(address)
-        print(register)
         if register == "A0":
             self.toHex("2079")
         elif register == "A1":
