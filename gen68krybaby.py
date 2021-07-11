@@ -4,6 +4,7 @@ import binascii
 from enum import Enum
 
 DisasmFileSignature = "gen68KryBabyDisasm"
+AsmFileSignature = "gen68KryBabyAsm"
 
 class Chunk:
     def __init__(self, data, address):
@@ -140,7 +141,11 @@ class Disassembler:
 
 
 def assembly(filePath, chunkReader):
-    print("assembly")
+    global AsmFileSignature
+    asmFilePath = f"{filePath}.{AsmFileSignature}"
+    asm = open(asmFilePath, "wb")
+    asm.write("123".encode("ascii"))
+    asm.close()
 
 def disassembly(filePath, chunkReader):
     global DisasmFileSignature
