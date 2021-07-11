@@ -3,9 +3,7 @@ import sys
 import binascii
 from enum import Enum
 
-if len(sys.argv) < 2:
-    print("Usage python3 gen68krybaby.py genesisRom.bin")
-    exit(1)
+DisasmFileSignature = "gen68KryBabyDisasm"
 
 class Chunk:
     def __init__(self, data, address):
@@ -50,7 +48,7 @@ class Disassembler:
         Commands = 2            
     
     def __init__(self, input, output):
-        self.EntryPoint = 512
+        self.EntryPoint = int(0x200)
         
         self.subroutinesAdresses = {self.EntryPoint}
         self.segmentStartAddress = None
@@ -124,6 +122,8 @@ class Disassembler:
             self.output.write("ROM HEADER:\n")
         
         if chunk.address in self.subroutinesAdresses:
+            if self.state == self.State.Data:
+                self.output.write("\n")
             self.state = self.State.Commands
             self.output.write(f"\nSUBROUTINE_{self.readableAddress(chunk.address)}:\n")
         
@@ -134,21 +134,42 @@ class Disassembler:
                 self.rhsChunk = chunk
                 output = self.disasmCommandChunks()
                 self.output.write(f"\t\t{output}")
+        else:
+            self.output.write(f" {chunk.data}")
 
-filePath = sys.argv[1]
-disasmFilePath = f"{filePath}.disasm"
-disasm = open(disasmFilePath, 'w')
-chunkReader = ChunkReader(filePath)
-adapter = DisassemblerToChunkReaderAdapter(chunkReader)
-disassembler = Disassembler(adapter, disasm)
 
-while True:
-    chunk = chunkReader.nextChunk()
-    if chunk != None:
-        disassembledChunk = disassembler.disasm(chunk)
-    else:
-        break
+
+def assembly(filePath, chunkReader):
+    print("assembly")
+
+def disassembly(filePath, chunkReader):
+    global DisasmFileSignature
+    disasmFilePath = f"{filePath}.{DisasmFileSignature}"
+    disasm = open(disasmFilePath, 'w')    
+    adapter = DisassemblerToChunkReaderAdapter(chunkReader)
+    disassembler = Disassembler(adapter, disasm)
+    while True:
+        chunk = chunkReader.nextChunk()
+        if chunk != None:
+            disassembledChunk = disassembler.disasm(chunk)
+        else:
+            break
+    disasm.close()
     
-disasm.close()
+def main(argv):
+    if len(argv) < 2:
+        print("Disassembly usage python3 gen68krybaby.py genesisRom.bin")
+        print("Assembly usage python3 gen68krybaby.py genesisRom.bin.disasm")
+        exit(1)
+        
+    filePath = argv[1]
+    chunkReader = ChunkReader(filePath)
+    
+    if filePath.endswith(f".{DisasmFileSignature}"):
+        assembly(filePath, chunkReader)
+    else:
+        disassembly(filePath, chunkReader)
+    
+    exit(0)    
 
-exit(0)
+main(sys.argv)
