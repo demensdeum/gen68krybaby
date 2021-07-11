@@ -4,7 +4,12 @@ import binascii
 from enum import Enum
 
 DisasmFileSignature = "gen68KryBabyDisasm"
-AsmFileSignature = "gen68KryBabyAsm"
+AsmFileSignature = "gen68KryBabyAsm.bin"
+RomHeaderLabel = "ROM HEADER"
+
+class State(Enum):
+    Data = 1
+    Commands = 2   
 
 class Chunk:
     def __init__(self, data, address):
@@ -42,12 +47,7 @@ class DisassemblerToChunkReaderAdapter:
             output += self.chunkReader.nextChunk().data
         return output
             
-class Disassembler:
-    
-    class State(Enum):
-        Data = 1
-        Commands = 2            
-    
+class Disassembler:         
     def __init__(self, input, output):
         self.EntryPoint = int(0x200)
         
@@ -55,7 +55,7 @@ class Disassembler:
         self.segmentStartAddress = None
         self.lhsChunk = None
         self.rhsChunk = None
-        self.state = self.State.Data
+        self.state = State.Data
         self.input = input
         self.output = output
         
@@ -120,17 +120,18 @@ class Disassembler:
     def disasm(self, chunk):
         if self.segmentStartAddress == None:
             self.segmentStartAddress = chunk.address
-            self.output.write("ROM HEADER:\n")
+            self.output.write(f"{RomHeaderLabel}:\n")
         
         if chunk.address in self.subroutinesAdresses:
-            if self.state == self.State.Data:
+            if self.state == State.Data:
                 self.output.write("\n")
-            self.state = self.State.Commands
+            self.state = State.Commands
             self.output.write(f"\nSUBROUTINE_{self.readableAddress(chunk.address)}:\n")
         
-        if self.state == self.State.Commands:
+        if self.state == State.Commands:
             if self.lhsChunk == None:
                 self.lhsChunk = chunk
+                
             elif self.rhsChunk == None:
                 self.rhsChunk = chunk
                 output = self.disasmCommandChunks()
@@ -138,25 +139,135 @@ class Disassembler:
         else:
             self.output.write(f" {chunk.data}")
 
+class Assembler:
+    def __init__(self, input, output):
+        self.input = input
+        self.output = output
+        self.state = State.Data
+        
+    def chunkToHex(self, chunk):
+        hexString = f"0x{chunk}"
+        outputInt = int(hexString, 16)
+        outputBytes = bytes([outputInt])
+        self.output.write(outputBytes)        
+        
+    def commandToHex(self, commandLine):
+        components = commandLine.split(" ")
+        if len(components) < 1:
+            return
+        
+        command = components[0]
+        if command == "RTS":
+            self.toHex("4E75")
+            
+        elif command == "NOP":
+            self.toHex("4E71")
+            
+        elif command == "RTE":
+            self.toHex("4E73")
+            
+        elif command == "JSR":
+            if len(components) != 2:
+                print(f"Incorrect JSR command count ({len(components)}): {commandLine}; len: {len(commandLine)}; waaa! waa!!")
+                exit(1)
+            else:
+                address = components[1]
+                self.jsrToHex(address)
+                
+        elif command == "MOVEA.L":
+            if len(components) != 2:
+                print(f"Incorrect JSR command count ({len(components)}): {commandLine}; len: {len(commandLine)}; waaa! waa!!")
+                exit(1)
+            else:
+                arguments = components[1]
+                if len(arguments) != 13:
+                    print(f"Incorrect MOVEA.L command arguments ({len(arguments)}) != 13: {arguments}; waaa! waa!!")
+                    exit(1)
+                else:
+                    address = arguments[2:10]
+                    register = arguments[11:]
+                    self.moveaToHex(address, register)
+            
+        else:
+            print(f"Unknown command: {commandLine}; len: {len(commandLine)}; waa! waa!!!")
+            exit(1)
+        
+    def addressToHex(self, address):
+        self.toHex(address[0:4])
+        self.toHex(address[4:8])        
+        
+    def moveaToHex(self, address, register):
+        print(address)
+        print(register)
+        if register == "A0":
+            self.toHex("2079")
+        elif register == "A1":
+            self.toHex("2279")
+        self.addressToHex(address)
+        
+    def jsrToHex(self, address):
+        if len(address) != 10:
+            print(f"Incorrect JSR command address len ({len(address)}) != 10: {address} waaa! waa!!")
+            exit(1)
+        address = address[2:]
+        self.toHex("4EB9")
+        self.addressToHex(address)
+        
+    def toHex(self, line):
+        if len(line) == 4:
+            self.toHex(line[:2])
+            self.toHex(line[2:])
+        elif len(line) == 2:
+            chunk = line
+            self.chunkToHex(chunk)
+        else:
+            self.commandToHex(line)
+        
+    def assembly(self, line):
+        if line == f"{RomHeaderLabel}:\n":
+            self.state = State.Data
+            return
+        elif line.startswith("SUBROUTINE_"):
+            self.state = State.Commands
+            return
+        elif len(line.strip()) < 1:
+            return
+        
+        line = line.strip()
+        
+        if self.state == State.Data:
+            chunks = line.split(" ")
+            for chunk in chunks:
+                if len(chunk) == 2:
+                    hexString = f"0x{chunk}"
+                    outputInt = int(hexString, 16)
+                    outputBytes = bytes([outputInt])
+                    self.output.write(outputBytes)
+        elif self.state == State.Commands:
+            self.toHex(line)
 
-
-def assembly(filePath, chunkReader):
+def assembly(filePath):
     global AsmFileSignature
+    disasm = open(filePath, "r")
     asmFilePath = f"{filePath}.{AsmFileSignature}"
     asm = open(asmFilePath, "wb")
-    asm.write("123".encode("ascii"))
+    assembler = Assembler(None, asm)
+    for line in disasm:
+        assembler.assembly(line)    
+    disasm.close()
     asm.close()
 
-def disassembly(filePath, chunkReader):
+def disassembly(filePath):
     global DisasmFileSignature
     disasmFilePath = f"{filePath}.{DisasmFileSignature}"
-    disasm = open(disasmFilePath, 'w')    
+    disasm = open(disasmFilePath, 'w')
+    chunkReader = ChunkReader(filePath)
     adapter = DisassemblerToChunkReaderAdapter(chunkReader)
     disassembler = Disassembler(adapter, disasm)
     while True:
         chunk = chunkReader.nextChunk()
         if chunk != None:
-            disassembledChunk = disassembler.disasm(chunk)
+            disassembler.disasm(chunk)
         else:
             break
     disasm.close()
@@ -168,12 +279,11 @@ def main(argv):
         exit(1)
         
     filePath = argv[1]
-    chunkReader = ChunkReader(filePath)
     
     if filePath.endswith(f".{DisasmFileSignature}"):
-        assembly(filePath, chunkReader)
+        assembly(filePath)
     else:
-        disassembly(filePath, chunkReader)
+        disassembly(filePath)
     
     exit(0)    
 
