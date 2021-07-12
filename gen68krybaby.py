@@ -279,9 +279,10 @@ def disassembly(filePath):
     disasm.close()
     
 def main(argv):
+    global DisasmFileSignature
     if len(argv) < 2:
         print("Disassembly usage python3 gen68krybaby.py genesisRom.bin")
-        print("Assembly usage python3 gen68krybaby.py genesisRom.bin.disasm")
+        print(f"Assembly usage python3 gen68krybaby.py genesisRom.bin.{DisasmFileSignature}")
         exit(1)
         
     filePath = argv[1]
