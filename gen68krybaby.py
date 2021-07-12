@@ -232,6 +232,14 @@ class Assembler:
             return
         
         line = line.strip()
+        line = line.split(";")
+        if len(line) > 2:
+            print(f"line: {line} is incorrect, len({len(line)}) > 2, must be less 2; waaa!!!!")
+            exit(1)
+        if len(line) < 1:
+            print(f"line: {line} is incorrect, len({len(line)}) < 1, must be more than 0; waaa!!")
+            exit(1)            
+        line = line[0]
         
         if self.state == State.Data:
             chunks = line.split(" ")
