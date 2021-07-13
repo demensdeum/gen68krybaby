@@ -7,16 +7,19 @@ DisasmFileSignature = "gen68KryBabyDisasm"
 AsmFileSignature = "gen68KryBabyAsm.bin"
 RomHeaderLabel = "ROM HEADER"
 
+class Constants(Enum):
+    EntryPoint = int(0x200)
+
 class State(Enum):
     Data = 1
-    Commands = 2
+    Operations = 2
 
-class Chunk:
+class Word:
     def __init__(self, data, address):
         self.data = data
         self.address = address
 
-class ChunkReader:
+class WordsReader:
     def __init__(self, filepath):
         rom = open(filepath, 'rb')
         content = rom.read()
@@ -24,7 +27,7 @@ class ChunkReader:
         self.hexString = str(binascii.hexlify(content))[2:-1]
         self.cursor = -1
 
-    def nextChunk(self):
+    def nextWord(self):
         self.cursor += 1
         address = int(self.cursor / 2)
         if self.cursor >= len(self.hexString):
@@ -35,23 +38,21 @@ class ChunkReader:
         if self.cursor < len(self.hexString):
             rhs = self.hexString[self.cursor]
         data = f"{lhs}{rhs}"
-        return Chunk(data, address)
+        return Word(data, address)
 
 class DisassemblerToChunkReaderAdapter:
     def __init__(self, chunkReader):
-        self.chunkReader = chunkReader
+        self.wordsReader = chunkReader
 
     def fetchLongWordMemoryAddress(self):
         output = "0x"
         for i in range(4):
-            output += self.chunkReader.nextChunk().data
+            output += self.wordsReader.nextWord().data
         return output
 
 class Disassembler:
     def __init__(self, input, output):
-        self.EntryPoint = int(0x200)
-
-        self.subroutinesAdresses = {self.EntryPoint}
+        self.subroutinesAdresses = {Constants.EntryPoint.value}
         self.segmentStartAddress = None
         self.lhsChunk = None
         self.rhsChunk = None
@@ -67,7 +68,7 @@ class Disassembler:
     def addSubroutineAddress(self, address):
         self.subroutinesAdresses.add(int(address, base=16))
 
-    def disasmCommandChunks(self):
+    def disasmOperationWords(self):
         output = f"{self.lhsChunk.data}{self.rhsChunk.data}".upper()
 
         self.lhsChunk = None
@@ -123,16 +124,16 @@ class Disassembler:
         if chunk.address in self.subroutinesAdresses:
             if self.state == State.Data:
                 self.output.write("\n")
-            self.state = State.Commands
+            self.state = State.Operations
             self.output.write(f"\nSUBROUTINE_{self.readableAddress(chunk.address)}:\n")
 
-        if self.state == State.Commands:
+        if self.state == State.Operations:
             if self.lhsChunk == None:
                 self.lhsChunk = chunk
 
             elif self.rhsChunk == None:
                 self.rhsChunk = chunk
-                output = self.disasmCommandChunks()
+                output = self.disasmOperationWords()
                 self.output.write(f"\t\t{output}")
         else:
             self.output.write(f" {chunk.data}")
@@ -149,37 +150,37 @@ class Assembler:
         outputBytes = bytes([outputInt])
         self.output.write(outputBytes)
 
-    def commandToHex(self, commandLine):
-        components = commandLine.split(" ")
+    def operationToHex(self, operationLine):
+        components = operationLine.split(" ")
         if len(components) < 1:
             return
 
-        command = components[0]
-        if command == "RTS":
+        operation = components[0]
+        if operation == "RTS":
             self.toHex("4E75")
 
-        elif command == "NOP":
+        elif operation == "NOP":
             self.toHex("4E71")
 
-        elif command == "RTE":
+        elif operation == "RTE":
             self.toHex("4E73")
 
-        elif command == "JSR":
+        elif operation == "JSR":
             if len(components) != 2:
-                print(f"Incorrect JSR command count ({len(components)}): {commandLine}; len: {len(commandLine)}; waaa! waa!!")
+                print(f"Incorrect JSR operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")
                 exit(1)
             else:
                 address = components[1]
                 self.jsrToHex(address)
 
-        elif command == "MOVEA.L":
+        elif operation == "MOVEA.L":
             if len(components) != 2:
-                print(f"Incorrect JSR command count ({len(components)}): {commandLine}; len: {len(commandLine)}; waaa! waa!!")
+                print(f"Incorrect JSR operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")
                 exit(1)
             else:
                 arguments = components[1]
                 if len(arguments) != 13:
-                    print(f"Incorrect MOVEA.L command arguments ({len(arguments)}) != 13: {arguments}; waaa! waa!!")
+                    print(f"Incorrect MOVEA.L operation arguments ({len(arguments)}) != 13: {arguments}; waaa! waa!!")
                     exit(1)
                 else:
                     address = arguments[2:10]
@@ -187,7 +188,7 @@ class Assembler:
                     self.moveaToHex(address, register)
 
         else:
-            print(f"Unknown command: {commandLine}; len: {len(commandLine)}; waa! waa!!!")
+            print(f"Unknown operation: {operationLine}; len: {len(operationLine)}; waa! waa!!!")
             exit(1)
 
     def addressToHex(self, address):
@@ -203,7 +204,7 @@ class Assembler:
 
     def jsrToHex(self, address):
         if len(address) != 10:
-            print(f"Incorrect JSR command address len ({len(address)}) != 10: {address} waaa! waa!!")
+            print(f"Incorrect JSR operation address len ({len(address)}) != 10: {address} waaa! waa!!")
             exit(1)
         address = address[2:]
         self.toHex("4EB9")
@@ -217,14 +218,14 @@ class Assembler:
             chunk = line
             self.chunkToHex(chunk)
         else:
-            self.commandToHex(line)
+            self.operationToHex(line)
 
     def assembly(self, line):
         if line == f"{RomHeaderLabel}:\n":
             self.state = State.Data
             return
         elif line.startswith("SUBROUTINE_"):
-            self.state = State.Commands
+            self.state = State.Operations
             return
         elif len(line.strip()) < 1:
             return
@@ -247,7 +248,7 @@ class Assembler:
                     outputInt = int(hexString, 16)
                     outputBytes = bytes([outputInt])
                     self.output.write(outputBytes)
-        elif self.state == State.Commands:
+        elif self.state == State.Operations:
             self.toHex(line)
 
 def assembly(filePath):
@@ -265,11 +266,11 @@ def disassembly(filePath):
     global DisasmFileSignature
     disasmFilePath = f"{filePath}.{DisasmFileSignature}"
     disasm = open(disasmFilePath, 'w')
-    chunkReader = ChunkReader(filePath)
+    chunkReader = WordsReader(filePath)
     adapter = DisassemblerToChunkReaderAdapter(chunkReader)
     disassembler = Disassembler(adapter, disasm)
     while True:
-        chunk = chunkReader.nextChunk()
+        chunk = chunkReader.nextWord()
         if chunk != None:
             disassembler.disasm(chunk)
         else:
