@@ -3,6 +3,7 @@ import sys
 import binascii
 from enum import Enum
 
+GenericAsmFileSignature = "asm"
 DisasmFileSignature = "gen68KryBabyDisasm"
 AsmFileSignature = "gen68KryBabyAsm.bin"
 RomHeaderLabel = "ROM HEADER"
@@ -286,7 +287,7 @@ def main(argv):
 
     filePath = argv[1]
 
-    if filePath.endswith(f".{DisasmFileSignature}"):
+    if filePath.endswith(f".{DisasmFileSignature}") or filePath.endswith(f".{GenericAsmFileSignature}"):
         assembly(filePath)
     else:
         disassembly(filePath)
