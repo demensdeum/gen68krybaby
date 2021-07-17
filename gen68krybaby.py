@@ -220,7 +220,7 @@ class Assembler:
             hexAddress = address[len(f"{SubroutineSignature}0x"):]
             self.addressToHex(hexAddress)
         elif address.startswith(SubroutineSignature):
-            self.subroutinesPointers.append(self.Subroutine(address, self.cursor() + 2))
+            self.subroutinesPointers.append(self.Subroutine(address, self.cursor()))
             hexAddress = HexAddress(len(self.subroutinesPointers) - 1)[2:]
             self.addressToHex(hexAddress)
         else:
@@ -278,7 +278,7 @@ class Assembler:
                 if subroutine.label == pointer.label:
                     hexAddress = HexAddress(subroutine.address)[2:]
                     self.addressToHex(hexAddress)
-                    resolved == True
+                    resolved = True
             
             if resolved == False:
                 print(f"Cannot resolve subroutine: {pointer.label}!! waaa!!!!")
