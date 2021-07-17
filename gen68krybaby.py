@@ -7,6 +7,12 @@ GenericAsmFileSignature = "asm"
 DisasmFileSignature = "gen68KryBabyDisasm"
 AsmFileSignature = "gen68KryBabyAsm.bin"
 RomHeaderLabel = "ROM HEADER"
+SubroutineSignature = "SUBROUTINE_"
+
+def HexAddress(address):
+    padding = 10
+    output = f"{address:#0{padding}x}"
+    return output
 
 class Constants(Enum):
     EntryPoint = int(0x200)
@@ -61,11 +67,6 @@ class Disassembler:
         self.input = input
         self.output = output
 
-    def readableAddress(self, address):
-        padding = 10
-        output = f"{address:#0{padding}x}"
-        return output
-
     def addSubroutineAddress(self, address):
         self.subroutinesAdresses.add(int(address, base=16))
 
@@ -86,7 +87,7 @@ class Disassembler:
         if output == "JSR":
             address = self.input.fetchLongWordMemoryAddress()
             self.addSubroutineAddress(address)
-            output = f"JSR {address}\n"
+            output = f"JSR {SubroutineSignature}{address}\n"
             return output
 
         elif output == "MOVEA.L,A0":
@@ -126,7 +127,7 @@ class Disassembler:
             if self.state == State.Data:
                 self.output.write("\n")
             self.state = State.Operations
-            self.output.write(f"\nSUBROUTINE_{self.readableAddress(chunk.address)}:\n")
+            self.output.write(f"\nSUBROUTINE_{HexAddress(chunk.address)}:\n")
 
         if self.state == State.Operations:
             if self.lhsChunk == None:
@@ -140,12 +141,19 @@ class Disassembler:
             self.output.write(f" {chunk.data}")
 
 class Assembler:
+    class Subroutine:
+        def __init__(self, label, address):
+            self.label = label
+            self.address = address    
+    
     def __init__(self, input, output):
         self.input = input
         self.output = output
         self.state = State.Data
+        self.subroutinesPointers = list()
+        self.subroutines = list()
 
-    def chunkToHex(self, chunk):
+    def writeChunkToHex(self, chunk):
         hexString = f"0x{chunk}"
         outputInt = int(hexString, 16)
         outputBytes = bytes([outputInt])
@@ -192,6 +200,9 @@ class Assembler:
             print(f"Unknown operation: {operationLine}; len: {len(operationLine)}; waa! waa!!!")
             exit(1)
 
+    def cursor(self):
+        return self.output.tell()
+
     def addressToHex(self, address):
         self.toHex(address[0:4])
         self.toHex(address[4:8])
@@ -204,12 +215,17 @@ class Assembler:
         self.addressToHex(address)
 
     def jsrToHex(self, address):
-        if len(address) != 10:
-            print(f"Incorrect JSR operation address len ({len(address)}) != 10: {address} waaa! waa!!")
-            exit(1)
-        address = address[2:]
         self.toHex("4EB9")
-        self.addressToHex(address)
+        if address.startswith(f"{SubroutineSignature}0x") and len(address) == len(f"{SubroutineSignature}0x00000000"):
+            hexAddress = address[len(f"{SubroutineSignature}0x"):]
+            self.addressToHex(hexAddress)
+        elif address.startswith(SubroutineSignature):
+            self.subroutinesPointers.append(self.Subroutine(address, self.cursor() + 2))
+            hexAddress = HexAddress(len(self.subroutinesPointers) - 1)[2:]
+            self.addressToHex(hexAddress)
+        else:
+            print(f"Incorrect JSR operation address, must start with {SubroutineSignature} or as hex address (0x00000200 for example); current address: {address}; waa!!")
+            exit(1)
 
     def toHex(self, line):
         if len(line) == 4:
@@ -217,7 +233,7 @@ class Assembler:
             self.toHex(line[2:])
         elif len(line) == 2:
             chunk = line
-            self.chunkToHex(chunk)
+            self.writeChunkToHex(chunk)
         else:
             self.operationToHex(line)
 
@@ -225,8 +241,10 @@ class Assembler:
         if line == f"{RomHeaderLabel}:\n":
             self.state = State.Data
             return
-        elif line.startswith("SUBROUTINE_"):
+        elif line.startswith(SubroutineSignature):
             self.state = State.Operations
+            label = line.strip()[:-1]
+            self.subroutines.append(self.Subroutine(label, self.cursor()))
             return
         elif len(line.strip()) < 1:
             return
@@ -251,6 +269,20 @@ class Assembler:
                     self.output.write(outputBytes)
         elif self.state == State.Operations:
             self.toHex(line)
+            
+    def mapPointersToSubroutines(self):
+        for pointer in self.subroutinesPointers:
+            self.output.seek(pointer.address)
+            resolved = False
+            for subroutine in self.subroutines:
+                if subroutine.label == pointer.label:
+                    hexAddress = HexAddress(subroutine.address)[2:]
+                    self.addressToHex(hexAddress)
+                    resolved == True
+            
+            if resolved == False:
+                print(f"Cannot resolve subroutine: {pointer.label}!! waaa!!!!")
+                exit(1)
 
 def assembly(filePath):
     global AsmFileSignature
@@ -260,6 +292,7 @@ def assembly(filePath):
     assembler = Assembler(None, asm)
     for line in disasm:
         assembler.assembly(line)
+    assembler.mapPointersToSubroutines()
     disasm.close()
     asm.close()
 
