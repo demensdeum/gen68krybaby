@@ -13,6 +13,10 @@ SubroutineWithAddressSignatureLength = len(SubroutineWithAddressSignature)
 SubroutineWithAddressSignatureExample = f"{SubroutineSignature}0x00000000"
 SubroutineWithAddressSignatureExampleLength = len(SubroutineWithAddressSignatureExample)
 
+def Kry(message, exitCode = 1):
+    print(message)
+    exit(1)
+
 def HexAddress(address):
     padding = 10
     output = f"{address:#0{padding}x}"
@@ -60,6 +64,18 @@ class DisassemblerToChunkReaderAdapter:
         for i in range(4):
             output += self.wordsReader.nextWord().data
         return output
+    
+    def fetchLongWord(self):
+        output = ""
+        for i in range(4):
+            output += self.wordsReader.nextWord().data
+        return output
+    
+    def fetchWord(self):
+        output = ""
+        for i in range(2):
+            output += self.wordsReader.nextWord().data
+        return output
 
 class Disassembler:
     def __init__(self, input, output):
@@ -74,6 +90,19 @@ class Disassembler:
     def addSubroutineAddress(self, address):
         self.subroutinesAdresses.add(int(address, base=16))
 
+    def resolveRegistry(self, registry):
+        registry = registry.upper()
+        if registry == "2F00":
+            return "A1"
+        else:
+            return registry
+        
+    def resolveLongWord(self, longWord):
+        if longWord == "53454741":
+            return "\"SEGA\""
+        else:
+            return longWord
+
     def disasmOperationWords(self):
         output = f"{self.lhsChunk.data}{self.rhsChunk.data}".upper()
 
@@ -87,6 +116,7 @@ class Disassembler:
         output = output.replace("4E77", "RTR")
         output = output.replace("2079", "MOVEA.L,A0")
         output = output.replace("2279", "MOVEA.L,A1")
+        output = output.replace("237C", "MOV.L")
 
         if output == "JSR":
             address = self.input.fetchLongWordMemoryAddress()
@@ -103,6 +133,11 @@ class Disassembler:
             address = self.input.fetchLongWordMemoryAddress()
             output = f"MOVEA.L {address},A1\n"
             return output
+        
+        elif output == "MOV.L":
+            ascii = self.resolveLongWord(self.input.fetchLongWord())
+            address = self.resolveRegistry(self.input.fetchWord())
+            output = f"MOV.L {ascii},{address}"
 
         elif output == "NOP":
             output = "NOP\n"
@@ -157,8 +192,10 @@ class Assembler:
         self.subroutinesPointers = list()
         self.subroutines = dict()
 
-    def writeChunkToHex(self, chunk):
-        hexString = f"0x{chunk}"
+    def writeWordToHex(self, word):
+        if len(word) != 2:
+            Kry(f"Word to hex length must be 2!! word {word} len {len(word)}!! waa!!!!")
+        hexString = f"0x{word}"
         outputInt = int(hexString, 16)
         outputBytes = bytes([outputInt])
         self.output.write(outputBytes)
@@ -180,29 +217,41 @@ class Assembler:
 
         elif operation == "JSR":
             if len(components) != 2:
-                print(f"Incorrect JSR operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")
-                exit(1)
+                Kry(f"Incorrect JSR operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")
             else:
                 address = components[1]
                 self.jsrToHex(address)
 
+        elif operation == "MOV.L":
+            if len(components) != 2:
+                Kry(f"Incorrect MOV.L operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")
+                
+            arguments = components[1]
+            if len(arguments) == 9:
+                longWord = arguments[1:5]
+                registry = arguments[7:9]
+                self.movlToHex(longWord, registry)                
+            elif len(arguments) == 13:
+                longWord = arguments[:8]
+                registry = arguments[9:]
+                self.movlToHex(longWord, registry)
+            else:
+                Kry("Incorrect MOV.L length!! operationLine: {operationLine} !! waaa!!!")
+
         elif operation == "MOVEA.L":
             if len(components) != 2:
-                print(f"Incorrect JSR operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")
-                exit(1)
+                Kry(f"Incorrect JSR operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")
             else:
                 arguments = components[1]
                 if len(arguments) != 13:
-                    print(f"Incorrect MOVEA.L operation arguments ({len(arguments)}) != 13: {arguments}; waaa! waa!!")
-                    exit(1)
+                    Kry(f"Incorrect MOVEA.L operation arguments ({len(arguments)}) != 13: {arguments}; waaa! waa!!")
                 else:
                     address = arguments[2:10]
                     register = arguments[11:]
                     self.moveaToHex(address, register)
 
         else:
-            print(f"Unknown operation: {operationLine}; len: {len(operationLine)}; waa! waa!!!")
-            exit(1)
+            Kry(f"Unknown operation: {operationLine}; len: {len(operationLine)}; waa! waa!!!")
 
     def cursor(self):
         return self.output.tell()
@@ -210,6 +259,27 @@ class Assembler:
     def addressToHex(self, address):
         self.toHex(address[0:4])
         self.toHex(address[4:8])
+
+    def longWordAsciiAsHex(self, asciiLongWord):
+        output = ""
+        for char in asciiLongWord:
+            hexCode = hex(ord(char))[2:]
+            output += hexCode
+        return output
+
+    def movlToHex(self, longWord, registry):
+        self.toHex("237C")
+        if len(longWord) == 4:
+            self.toHex(self.longWordAsciiAsHex(longWord))
+        elif len(longWord) == 8:
+            self.toHex(longWord)
+        else:
+            Kry(f"longWord:{longWord} length is incorrect for movl!! waa")
+            
+        if registry == "A1":
+            self.toHex("2F00")
+        elif len(registry) == 4:
+            self.toHex(registry)
 
     def moveaToHex(self, address, register):
         if register == "A0":
@@ -228,16 +298,18 @@ class Assembler:
             hexAddress = HexAddress(len(self.subroutinesPointers) - 1)[2:]
             self.addressToHex(hexAddress)
         else:
-            print(f"Incorrect JSR operation address, must start with {SubroutineSignature} or as hex address (0x00000200 for example); current address: {address}; waa!!")
-            exit(1)
+            Kry(f"Incorrect JSR operation address, must start with {SubroutineSignature} or as hex address (0x00000200 for example); current address: {address}; waa!!")
 
     def toHex(self, line):
-        if len(line) == 4:
+        if len(line) == 8:
+            self.toHex(line[:4])
+            self.toHex(line[4:])            
+        elif len(line) == 4:
             self.toHex(line[:2])
             self.toHex(line[2:])
         elif len(line) == 2:
-            chunk = line
-            self.writeChunkToHex(chunk)
+            word = line
+            self.writeWordToHex(word)
         else:
             self.operationToHex(line)
 
@@ -256,11 +328,9 @@ class Assembler:
         line = line.strip()
         line = line.split(";")
         if len(line) > 2:
-            print(f"line: {line} is incorrect, len({len(line)}) > 2, must be less 2; waaa!!!!")
-            exit(1)
+            Kry(f"line: {line} is incorrect, len({len(line)}) > 2, must be less 2; waaa!!!!")
         if len(line) < 1:
-            print(f"line: {line} is incorrect, len({len(line)}) < 1, must be more than 0; waaa!!")
-            exit(1)
+            Kry(f"line: {line} is incorrect, len({len(line)}) < 1, must be more than 0; waaa!!")
         line = line[0]
 
         if self.state == State.Data:
@@ -278,8 +348,7 @@ class Assembler:
         for pointer in self.subroutinesPointers:
             self.output.seek(pointer.address)
             if pointer.label not in self.subroutines:
-                print(f"Cannot resolve subroutine: {pointer.label}!! waaa!!!!")
-                exit(1)
+                Kry(f"Cannot resolve subroutine: {pointer.label}!! waaa!!!!")
             subroutine = self.subroutines[pointer.label]
             hexAddress = HexAddress(subroutine.address)[2:]
             self.addressToHex(hexAddress)
