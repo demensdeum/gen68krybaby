@@ -148,8 +148,8 @@ class Assembler:
     class Subroutine:
         def __init__(self, label, address):
             self.label = label
-            self.address = address    
-    
+            self.address = address
+
     def __init__(self, input, output):
         self.input = input
         self.output = output
@@ -273,14 +273,14 @@ class Assembler:
                     self.output.write(outputBytes)
         elif self.state == State.Operations:
             self.toHex(line)
-            
+
     def mapPointersToSubroutines(self):
         for pointer in self.subroutinesPointers:
             self.output.seek(pointer.address)
-            subroutine = self.subroutines[pointer.label]
-            if subroutine == None:
+            if pointer.label not in self.subroutines:
                 print(f"Cannot resolve subroutine: {pointer.label}!! waaa!!!!")
-                exit(1)                
+                exit(1)
+            subroutine = self.subroutines[pointer.label]
             hexAddress = HexAddress(subroutine.address)[2:]
             self.addressToHex(hexAddress)
 
