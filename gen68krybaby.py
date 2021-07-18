@@ -15,6 +15,7 @@ SubroutineWithAddressSignatureExampleLength = len(SubroutineWithAddressSignature
 
 OpcodesHex = {
     "MOVE.B" : "1029",
+    "BEQ.B_OVER_8_BYTES"  : "6708",
     "ANDI.B" : "0200",
     "JSR"    : "4EB9",
     "NOP"    : "4E71",
@@ -145,8 +146,8 @@ class Disassembler:
             return output
         
         elif output == "MOVE.B":
-            arguments = self.input.fetchWord()
-            source = arguments[2:].upper()
+            arguments = self.input.fetchWord().upper()
+            source = arguments[2:]
             output += " "
             if source == "01":
                 output += "A1"
@@ -179,6 +180,9 @@ class Disassembler:
             ascii = self.resolveLongWord(self.input.fetchLongWord())
             address = self.resolveRegistry(self.input.fetchWord())
             output = f"MOVE.L {ascii},{address}"
+            
+        elif output == "BEQ.B_OVER_8_BYTES":
+            output = f"BEQ.B 0x08" 
 
         return f"{output}\n"
 
@@ -302,6 +306,16 @@ class Assembler:
                 address = components[1]
                 self.jsrToHex(address)
 
+        elif operation == "BEQ.B":
+            if len(components) != 2:
+                Kry(f"Incorrect BEQ.B operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")            
+            jumpToByteShift = components[1]
+            if len(jumpToByteShift) == 4 and jumpToByteShift.startswith("0x"):
+                self.toHex("67")
+                self.toHex(jumpToByteShift[2:])
+            else:
+                Kry(f"BEQ.B jump to labels is not implemented!! Only byte shift is supported, for example BEQ.8 0x08!!! Operation line: {operationLine} waaa!!!")
+
         elif operation == "MOVE.L":
             if len(components) != 2:
                 Kry(f"Incorrect MOVE.L operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")
@@ -331,7 +345,7 @@ class Assembler:
                     self.moveaToHex(address, register)
 
         else:
-            Kry(f"Unknown operation: {operationLine}; len: {len(operationLine)}; waa! waa!!!")
+            Kry(f"Unknown operation: {operation} in {operationLine}; len: {len(operationLine)}; waa! waa!!!")
 
     def cursor(self):
         return self.output.tell()
