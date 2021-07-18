@@ -115,6 +115,7 @@ class Disassembler:
         self.lhsChunk = None
         self.rhsChunk = None
 
+        #output = output.replace("0200", "ANDI.B")
         output = output.replace("4EB9", "JSR")
         output = output.replace("4E71", "NOP")
         output = output.replace("4E75", "RTS")
@@ -143,15 +144,15 @@ class Disassembler:
         
         elif output == "MOVE.B":
             arguments = self.input.fetchWord()
-            source = arguments[:2].upper()
+            source = arguments[2:].upper()
             output += " "
-            if source == "EF":
+            if source == "01":
                 output += "A1"
             else:
                 output += f"0x{source}"
             output += ","
-            destination = arguments[2:]
-            if destination == "01":
+            destination = arguments[:2]
+            if destination == "EF":
                 output += "D0"
             else:
                 output += f"0x{destination}"
@@ -162,22 +163,6 @@ class Disassembler:
             ascii = self.resolveLongWord(self.input.fetchLongWord())
             address = self.resolveRegistry(self.input.fetchWord())
             output = f"MOVE.L {ascii},{address}"
-
-        elif output == "NOP":
-            output = "NOP\n"
-            return output
-
-        elif output == "RTS":
-            output = "RTS\n"
-            return output
-
-        elif output == "RTE":
-            output = "RTE\n"
-            return output
-
-        elif output == "RTR":
-            output = "RTR\n"
-            return output
 
         return f"{output}\n"
 
@@ -224,21 +209,26 @@ class Assembler:
         outputBytes = bytes([outputInt])
         self.output.write(outputBytes)
 
-    def movebToHex(self, source, destination):
-        self.toHex(OpcodesHex["MOVE.B"])
-        if source == "A1": #TODO: source and destination reverted?
-            self.toHex("EF")
-        elif len(source) == 4 and source.startswith("0x"):
-            self.toHex(source[2:])
+    def movebToHex(self, source, destination):        
+        if source == "A1":
+            source = "0x01"
+            
+        if len(source) == 4 and source.startswith("0x"):
+            source = source[2:]
         else:
             Kry(f"waaa!! Incorrect MOVE.B source!! {source}")
             
         if destination == "D0":
-            self.toHex("01")
-        elif len(destination) == 4 and destination.startswith("0x"):
-            self.toHex(destination[2:])
+            destination = "0xEF"
+            
+        if len(destination) == 4 and destination.startswith("0x"):
+            destination = destination[2:]
         else:
             Kry(f"waaa!! Incorrect MOVE.B destination!! {destination}")
+            
+        self.toHex(OpcodesHex["MOVE.B"])            
+        self.toHex(destination)
+        self.toHex(source)        
 
     def operationToHex(self, operationLine):
         components = operationLine.split(" ")
