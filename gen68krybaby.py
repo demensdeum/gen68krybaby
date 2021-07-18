@@ -13,6 +13,12 @@ SubroutineWithAddressSignatureLength = len(SubroutineWithAddressSignature)
 SubroutineWithAddressSignatureExample = f"{SubroutineSignature}0x00000000"
 SubroutineWithAddressSignatureExampleLength = len(SubroutineWithAddressSignatureExample)
 
+OpcodesHex = {
+    "MOVE.B" : "1029"
+}
+
+HexToOpcodes = {value: key for key, value in OpcodesHex.items()}
+
 def Kry(message, exitCode = 1):
     print(message)
     exit(1)
@@ -114,9 +120,10 @@ class Disassembler:
         output = output.replace("4E75", "RTS")
         output = output.replace("4E73", "RTE")
         output = output.replace("4E77", "RTR")
+        output = output.replace("1029", "MOVE.B")
         output = output.replace("2079", "MOVEA.L,A0")
         output = output.replace("2279", "MOVEA.L,A1")
-        output = output.replace("237C", "MOV.L")
+        output = output.replace("237C", "MOVE.L")
 
         if output == "JSR":
             address = self.input.fetchLongWordMemoryAddress()
@@ -134,10 +141,27 @@ class Disassembler:
             output = f"MOVEA.L {address},A1\n"
             return output
         
-        elif output == "MOV.L":
+        elif output == "MOVE.B":
+            arguments = self.input.fetchWord()
+            source = arguments[:2].upper()
+            output += " "
+            if source == "EF":
+                output += "A1"
+            else:
+                output += f"0x{source}"
+            output += ","
+            destination = arguments[2:]
+            if destination == "01":
+                output += "D0"
+            else:
+                output += f"0x{destination}"
+            output += "\n"
+            return output
+        
+        elif output == "MOVE.L":
             ascii = self.resolveLongWord(self.input.fetchLongWord())
             address = self.resolveRegistry(self.input.fetchWord())
-            output = f"MOV.L {ascii},{address}"
+            output = f"MOVE.L {ascii},{address}"
 
         elif output == "NOP":
             output = "NOP\n"
@@ -200,6 +224,22 @@ class Assembler:
         outputBytes = bytes([outputInt])
         self.output.write(outputBytes)
 
+    def movebToHex(self, source, destination):
+        self.toHex(OpcodesHex["MOVE.B"])
+        if source == "A1": #TODO: source and destination reverted?
+            self.toHex("EF")
+        elif len(source) == 4 and source.startswith("0x"):
+            self.toHex(source[2:])
+        else:
+            Kry(f"waaa!! Incorrect MOVE.B source!! {source}")
+            
+        if destination == "D0":
+            self.toHex("01")
+        elif len(destination) == 4 and destination.startswith("0x"):
+            self.toHex(destination[2:])
+        else:
+            Kry(f"waaa!! Incorrect MOVE.B destination!! {destination}")
+
     def operationToHex(self, operationLine):
         components = operationLine.split(" ")
         if len(components) < 1:
@@ -214,6 +254,16 @@ class Assembler:
 
         elif operation == "RTE":
             self.toHex("4E73")
+            
+        elif operation == "MOVE.B":
+            if len(components) != 2:
+                Kry("Incorrect MOVE.B operaion count: ({len(components)}): {operationLine}; Must be 2")
+            arguments = components[1].split(",")
+            if len(arguments) != 2:
+                Kry("Incorrect MOVE.B operation arguments: ({len(arguments)}): {arguments}; Must be 2")
+            source = arguments[0]
+            destination = arguments[1]
+            self.movebToHex(source, destination)
 
         elif operation == "JSR":
             if len(components) != 2:
@@ -222,9 +272,9 @@ class Assembler:
                 address = components[1]
                 self.jsrToHex(address)
 
-        elif operation == "MOV.L":
+        elif operation == "MOVE.L":
             if len(components) != 2:
-                Kry(f"Incorrect MOV.L operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")
+                Kry(f"Incorrect MOVE.L operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")
                 
             arguments = components[1]
             if len(arguments) == 9:
