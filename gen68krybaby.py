@@ -219,7 +219,7 @@ class Assembler:
 
     def andibToHex(self, data, destination):
         if len(data) != 4:
-            Kry(f"Wrong ANBI data length must be 4!!! {data}!! waaahaa!!")
+            Kry(f"Wrong ANDI.B data length must be 4!!! {data}!! waaahaa!!")
         data = data[2:]
         if destination == "D0":
            destination = "00"
