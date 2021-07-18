@@ -14,7 +14,17 @@ SubroutineWithAddressSignatureExample = f"{SubroutineSignature}0x00000000"
 SubroutineWithAddressSignatureExampleLength = len(SubroutineWithAddressSignatureExample)
 
 OpcodesHex = {
-    "MOVE.B" : "1029"
+    "MOVE.B" : "1029",
+    "ANDI.B" : "0200",
+    "JSR"    : "4EB9",
+    "NOP"    : "4E71",
+    "RTS"    : "4E75",
+    "RTE"    : "4E73",
+    "RTR"    : "4E77",
+    "MOVE.B" : "1029",
+    "MOVEA.L,A0" : "2079",
+    "MOVEA.L,A1" : "2279",
+    "MOVE.L" : "237C"
 }
 
 HexToOpcodes = {value: key for key, value in OpcodesHex.items()}
@@ -115,16 +125,8 @@ class Disassembler:
         self.lhsChunk = None
         self.rhsChunk = None
 
-        #output = output.replace("0200", "ANDI.B")
-        output = output.replace("4EB9", "JSR")
-        output = output.replace("4E71", "NOP")
-        output = output.replace("4E75", "RTS")
-        output = output.replace("4E73", "RTE")
-        output = output.replace("4E77", "RTR")
-        output = output.replace("1029", "MOVE.B")
-        output = output.replace("2079", "MOVEA.L,A0")
-        output = output.replace("2279", "MOVEA.L,A1")
-        output = output.replace("237C", "MOVE.L")
+        for opcode, hex in OpcodesHex.items():
+            output = output.replace(hex, opcode)
 
         if output == "JSR":
             address = self.input.fetchLongWordMemoryAddress()
@@ -158,6 +160,20 @@ class Disassembler:
                 output += f"0x{destination}"
             output += "\n"
             return output
+        
+        elif output == "ANDI.B":
+            arguments = self.input.fetchWord()
+            output += " "
+            data = arguments[2:].upper()    
+            output += f"0x{data}"
+            output += ","
+            destination = arguments[:2]
+            if destination == "00":
+                output += "D0"
+            else:
+                output += f"0x{destination}"
+            output += "\n"
+            return output        
         
         elif output == "MOVE.L":
             ascii = self.resolveLongWord(self.input.fetchLongWord())
@@ -200,6 +216,20 @@ class Assembler:
         self.state = State.Data
         self.subroutinesPointers = list()
         self.subroutines = dict()
+
+    def andibToHex(self, data, destination):
+        if len(data) != 4:
+            Kry(f"Wrong ANBI data length must be 4!!! {data}!! waaahaa!!")
+        data = data[2:]
+        if destination == "D0":
+           destination = "00"
+        elif len(destination) == 4 and destination.startswith("0x"):
+            destination = destination[2:]
+        else:
+            Kry("Unknown destination format for ANDI.B!! {destination}")
+        self.toHex(OpcodesHex["ANDI.B"])
+        self.toHex(destination)
+        self.toHex(data)
 
     def writeWordToHex(self, word):
         if len(word) != 2:
@@ -245,12 +275,22 @@ class Assembler:
         elif operation == "RTE":
             self.toHex("4E73")
             
-        elif operation == "MOVE.B":
+        elif operation == "ANDI.B":
             if len(components) != 2:
-                Kry("Incorrect MOVE.B operaion count: ({len(components)}): {operationLine}; Must be 2")
+                Kry(f"Incorrect ANDI.B operation count: ({len(components)}): {operationLine}; Must be 2")
             arguments = components[1].split(",")
             if len(arguments) != 2:
-                Kry("Incorrect MOVE.B operation arguments: ({len(arguments)}): {arguments}; Must be 2")
+                Kry(f"Incorrect ANDI.B operation arguments: ({len(arguments)}): {arguments}; Must be 2")            
+            data = arguments[0]
+            destination = arguments[1]
+            self.andibToHex(data, destination)
+            
+        elif operation == "MOVE.B":
+            if len(components) != 2:
+                Kry(f"Incorrect MOVE.B operaion count: ({len(components)}): {operationLine}; Must be 2")
+            arguments = components[1].split(",")
+            if len(arguments) != 2:
+                Kry(f"Incorrect MOVE.B operation arguments: ({len(arguments)}): {arguments}; Must be 2")
             source = arguments[0]
             destination = arguments[1]
             self.movebToHex(source, destination)
