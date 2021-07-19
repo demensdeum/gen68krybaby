@@ -34,8 +34,7 @@ def Kry(message, exitCode = 1):
     print(message)
     exit(1)
 
-def HexAddress(address):
-    padding = 10
+def HexAddress(address, padding = 10):
     output = f"{address:#0{padding}x}"
     return output
 
@@ -81,13 +80,13 @@ class DisassemblerToChunkReaderAdapter:
         for i in range(4):
             output += self.wordsReader.nextWord().data
         return output
-    
+
     def fetchLongWord(self):
         output = ""
         for i in range(4):
             output += self.wordsReader.nextWord().data
         return output
-    
+
     def fetchWord(self):
         output = ""
         for i in range(2):
@@ -113,7 +112,7 @@ class Disassembler:
             return "A1"
         else:
             return registry
-        
+
     def resolveLongWord(self, longWord):
         if longWord == "53454741":
             return "\"SEGA\""
@@ -144,7 +143,7 @@ class Disassembler:
             address = self.input.fetchLongWordMemoryAddress()
             output = f"MOVEA.L {address},A1\n"
             return output
-        
+
         elif output == "MOVE.B":
             arguments = self.input.fetchWord().upper()
             source = arguments[2:]
@@ -161,11 +160,11 @@ class Disassembler:
                 output += f"0x{destination}"
             output += "\n"
             return output
-        
+
         elif output == "ANDI.B":
             arguments = self.input.fetchWord()
             output += " "
-            data = arguments[2:].upper()    
+            data = arguments[2:].upper()
             output += f"0x{data}"
             output += ","
             destination = arguments[:2]
@@ -174,15 +173,15 @@ class Disassembler:
             else:
                 output += f"0x{destination}"
             output += "\n"
-            return output        
-        
+            return output
+
         elif output == "MOVE.L":
             ascii = self.resolveLongWord(self.input.fetchLongWord())
             address = self.resolveRegistry(self.input.fetchWord())
             output = f"MOVE.L {ascii},{address}"
-            
+
         elif output == "BEQ.B_OVER_8_BYTES":
-            output = f"BEQ.B 0x08" 
+            output = f"BEQ.B 0x08"
 
         return f"{output}\n"
 
@@ -218,6 +217,7 @@ class Assembler:
         self.input = input
         self.output = output
         self.state = State.Data
+        self.beqSubroutinesPointers = list()
         self.subroutinesPointers = list()
         self.subroutines = dict()
 
@@ -243,26 +243,26 @@ class Assembler:
         outputBytes = bytes([outputInt])
         self.output.write(outputBytes)
 
-    def movebToHex(self, source, destination):        
+    def movebToHex(self, source, destination):
         if source == "A1":
             source = "0x01"
-            
+
         if len(source) == 4 and source.startswith("0x"):
             source = source[2:]
         else:
             Kry(f"waaa!! Incorrect MOVE.B source!! {source}")
-            
+
         if destination == "D0":
             destination = "0xEF"
-            
+
         if len(destination) == 4 and destination.startswith("0x"):
             destination = destination[2:]
         else:
             Kry(f"waaa!! Incorrect MOVE.B destination!! {destination}")
-            
-        self.toHex(OpcodesHex["MOVE.B"])            
+
+        self.toHex(OpcodesHex["MOVE.B"])
         self.toHex(destination)
-        self.toHex(source)        
+        self.toHex(source)
 
     def operationToHex(self, operationLine):
         components = operationLine.split(" ")
@@ -278,17 +278,17 @@ class Assembler:
 
         elif operation == "RTE":
             self.toHex("4E73")
-            
+
         elif operation == "ANDI.B":
             if len(components) != 2:
                 Kry(f"Incorrect ANDI.B operation count: ({len(components)}): {operationLine}; Must be 2")
             arguments = components[1].split(",")
             if len(arguments) != 2:
-                Kry(f"Incorrect ANDI.B operation arguments: ({len(arguments)}): {arguments}; Must be 2")            
+                Kry(f"Incorrect ANDI.B operation arguments: ({len(arguments)}): {arguments}; Must be 2")
             data = arguments[0]
             destination = arguments[1]
             self.andibToHex(data, destination)
-            
+
         elif operation == "MOVE.B":
             if len(components) != 2:
                 Kry(f"Incorrect MOVE.B operaion count: ({len(components)}): {operationLine}; Must be 2")
@@ -308,23 +308,28 @@ class Assembler:
 
         elif operation == "BEQ.B":
             if len(components) != 2:
-                Kry(f"Incorrect BEQ.B operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")            
-            jumpToByteShift = components[1]
-            if len(jumpToByteShift) == 4 and jumpToByteShift.startswith("0x"):
+                Kry(f"Incorrect BEQ.B operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")
+            jumpTo = components[1]
+            if len(jumpTo) == 4 and jumpTo.startswith("0x"):
                 self.toHex("67")
-                self.toHex(jumpToByteShift[2:])
+                self.toHex(jumpTo[2:])
+            elif jumpTo.startswith(f"{SubroutineSignature}"):
+                address = jumpTo
+                self.toHex("67")
+                self.beqSubroutinesPointers.append(self.Subroutine(address, self.cursor()))
+                self.toHex("00")
             else:
-                Kry(f"BEQ.B jump to labels is not implemented!! Only byte shift is supported, for example BEQ.8 0x08!!! Operation line: {operationLine} waaa!!!")
+                Kry(f"Incorrect BEQ.B: {operationLine}; waaa!!!")
 
         elif operation == "MOVE.L":
             if len(components) != 2:
                 Kry(f"Incorrect MOVE.L operation count ({len(components)}): {operationLine}; len: {len(operationLine)}; waaa! waa!!")
-                
+
             arguments = components[1]
             if len(arguments) == 9:
                 longWord = arguments[1:5]
                 registry = arguments[7:9]
-                self.movlToHex(longWord, registry)                
+                self.movlToHex(longWord, registry)
             elif len(arguments) == 13:
                 longWord = arguments[:8]
                 registry = arguments[9:]
@@ -369,7 +374,7 @@ class Assembler:
             self.toHex(longWord)
         else:
             Kry(f"longWord:{longWord} length is incorrect for movl!! waa")
-            
+
         if registry == "A1":
             self.toHex("2F00")
         elif len(registry) == 4:
@@ -397,7 +402,7 @@ class Assembler:
     def toHex(self, line):
         if len(line) == 8:
             self.toHex(line[:4])
-            self.toHex(line[4:])            
+            self.toHex(line[4:])
         elif len(line) == 4:
             self.toHex(line[:2])
             self.toHex(line[2:])
@@ -438,6 +443,19 @@ class Assembler:
         elif self.state == State.Operations:
             self.toHex(line)
 
+    def mapBeqPointersToSubroutines(self):
+        for pointer in self.beqSubroutinesPointers:
+            self.output.seek(pointer.address)
+            if pointer.label not in self.subroutines:
+                Kry(f"Cannot resolve beq subroutine: {pointer.label}!! waaa!!!!")
+            subroutine = self.subroutines[pointer.label]
+            diff = subroutine.address - pointer.address
+            diff -= 1
+            if diff <= -128 or diff > 127:
+                Kry(f"BEQ can't jump so long!!! Subroutine {pointer.label} is too far away: {diff}; Can jump only -128 to 127!! waaa!!!!!")
+            output = HexAddress(diff, 4)[2:]
+            self.toHex(output)
+
     def mapPointersToSubroutines(self):
         for pointer in self.subroutinesPointers:
             self.output.seek(pointer.address)
@@ -456,6 +474,7 @@ def assembly(filePath):
     for line in disasm:
         assembler.assembly(line)
     assembler.mapPointersToSubroutines()
+    assembler.mapBeqPointersToSubroutines()
     disasm.close()
     asm.close()
 
