@@ -6,7 +6,8 @@ from enum import Enum
 GenericAsmFileSignature = "asm"
 DisasmFileSignature = "gen68KryBabyDisasm"
 AsmFileSignature = "gen68KryBabyAsm.bin"
-RomHeaderLabel = "ROM HEADER"
+RomHeaderSignature = "ROM HEADER"
+DataSignature = "DATA_"
 SubroutineSignature = "SUBROUTINE_"
 SubroutineWithAddressSignature = f"{SubroutineSignature}0x"
 SubroutineWithAddressSignatureLength = len(SubroutineWithAddressSignature)
@@ -188,13 +189,13 @@ class Disassembler:
     def disasm(self, chunk):
         if self.segmentStartAddress == None:
             self.segmentStartAddress = chunk.address
-            self.output.write(f"{RomHeaderLabel}:\n")
+            self.output.write(f"{RomHeaderSignature}:\n")
 
         if chunk.address in self.subroutinesAdresses:
             if self.state == State.Data:
                 self.output.write("\n")
             self.state = State.Operations
-            self.output.write(f"\nSUBROUTINE_{HexAddress(chunk.address)}:\n")
+            self.output.write(f"\n{SubroutineSignature}{HexAddress(chunk.address)}:\n")
 
         if self.state == State.Operations:
             if self.lhsChunk == None:
@@ -413,7 +414,7 @@ class Assembler:
             self.operationToHex(line)
 
     def assembly(self, line):
-        if line == f"{RomHeaderLabel}:\n":
+        if line.startswith(DataSignature) or line == f"{RomHeaderSignature}:\n":
             self.state = State.Data
             return
         elif line.startswith(SubroutineSignature):
@@ -450,7 +451,7 @@ class Assembler:
                 Kry(f"Cannot resolve beq subroutine: {pointer.label}!! waaa!!!!")
             subroutine = self.subroutines[pointer.label]
             diff = subroutine.address - pointer.address
-            diff -= 1
+            diff -= 1 # eh?
             if diff <= -128 or diff > 127:
                 Kry(f"BEQ can't jump so long!!! Subroutine {pointer.label} is too far away: {diff}; Can jump only -128 to 127!! waaa!!!!!")
             output = HexAddress(diff, 4)[2:]
